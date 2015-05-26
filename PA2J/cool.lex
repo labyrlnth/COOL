@@ -71,6 +71,9 @@ import java_cup.runtime.Symbol;
 	case BLOCK_COMMENT:
         yybegin(YYINITIAL);
         return new Symbol(TokenConstants.ERROR, "EOF in Comment");
+    case STRING:
+        yybegin(YYINITIAL);
+        return new Symbol(TokenConstants.ERROR, "EOF in String");
     }
     return new Symbol(TokenConstants.EOF);
 %eofval}
@@ -78,8 +81,10 @@ import java_cup.runtime.Symbol;
 %class CoolLexer
 %cup
 %state BLOCK_COMMENT
+%state BLOCK_COMMENT_BACKSLASH
 %state SINGLE_COMMENT
 %state STRING
+%state STRING_BACKSLASH
 %state STRING_ERROR
 
 ALPHA=[A-Za-z]
@@ -164,70 +169,35 @@ Z=[zZ]
 <YYINITIAL> [a-z][_a-zA-Z0-9]* { return new Symbol(TokenConstants.OBJECTID, AbstractTable.idtable.addString(yytext()));} 
 
 <YYINITIAL> \" { string_buf.setLength(0); yybegin(STRING); }
+<STRING> \\ { yybegin(STRING_BACKSLASH); }
+<STRING_BACKSLASH> {CHARACTERS} {string_buf.append(yytext()); yybegin(STRING); } 
+
 <STRING> \" {
     yybegin(YYINITIAL);
     return new Symbol(TokenConstants.STR_CONST, AbstractTable.stringtable.addString(string_buf.toString())); 
 }
 
-<STRING> "\f" {
-    if(maxLengthExceeded() != null) {
-        return maxLengthExceeded();
-    }
-    string_buf.append('\f');
-}
+<STRING> "\f" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\f'); }
+<STRING> "\n" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\n'); }
+<STRING> "\t" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\t'); }
+<STRING> "\b" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\b'); }
+<STRING> {CHARACTERS} { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append(yytext()); }
+<STRING> \n { yybegin(YYINITIAL); return new Symbol(TokenConstants.ERROR, "Unterminated string constant"); }
 
-<STRING> "\n" {
-    if(maxLengthExceeded() != null) {
-        return maxLengthExceeded();
-    }
-    string_buf.append('\n');
-}
-
-<STRING> "\t" {
-    if(maxLengthExceeded() != null) {
-        return maxLengthExceeded();
-    }
-    string_buf.append('\t');
-}
-
-<STRING> "\b" {
-    if(maxLengthExceeded() != null) {
-        return maxLengthExceeded();
-    }
-    string_buf.append('\b');
-}
-
-<STRING> {CHARACTERS} {
-    if(maxLengthExceeded() != null) {
-        return maxLengthExceeded();
-    }
-    string_buf.append(yytext());
-}
-
-<STRING> "\n" {
-    if(maxLengthExceeded() != null) {
-        return maxLengthExceeded();
-    }
-    string_buf.append(yytext());
-}
 
 <YYINITIAL> "--" { yybegin(SINGLE_COMMENT); }
 
-<SINGLE_COMMENT> \n { yybegin(YYINITIAL); }
+<SINGLE_COMMENT> \n { curr_lineno++; yybegin(YYINITIAL); }
 
-<YYINITIAL> "(*" {
-    yybegin(BLOCK_COMMENT); 
-    comment_count = comment_count + 1; 
-}
+<YYINITIAL> "(*" { comment_count = comment_count + 1; yybegin(BLOCK_COMMENT); }
+<YYINITIAL> "*)" { return new Symbol(TokenConstants.ERROR, "Unmatched *)"); }
 
-<YYINITIAL, BLOCK_COMMENT> \n {}
+<BLOCK_COMMENT> "(*" {comment_count = comment_count + 1; }
+<BLOCK_COMMENT> \\ { yybegin(BLOCK_COMMENT_BACKSLASH);}
+<BLOCK_COMMENT_BACKSLASH> . { yybegin(BLOCK_COMMENT); }
+<BLOCK_COMMENT> "*)" { comment_count = comment_count - 1; if (comment_count == 0) { yybegin(YYINITIAL); }}
 
-<BLOCK_COMMENT> "*)" {
-    comment_count = comment_count - 1;
-    if (comment_count == 0) {
-        yybegin(YYINITIAL);
-    }
-}
+<YYINITIAL, BLOCK_COMMENT> \n { curr_lineno++; }
 
 <SINGLE_COMMENT, BLOCK_COMMENT> . {}
 
@@ -239,6 +209,5 @@ Z=[zZ]
     will match match everything not
     matched by other lexical rules. */
 
-    System.err.println("LEXER BUG - UNMATCHED: " + yytext());
-    System.exit(-1); 
+    return new Symbol(TokenConstants.ERROR, yytext());
 }
