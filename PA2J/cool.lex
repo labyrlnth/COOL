@@ -36,7 +36,7 @@ import java_cup.runtime.Symbol;
 
     Symbol maxLengthExceeded() {
       if (string_buf.length() >= MAX_STR_CONST) {
-        yybegin(STRING_ERROR);
+        //TODO: remove the state; yybegin(STRING_ERROR);
         return new Symbol(TokenConstants.ERROR, "String constant too long");
       } else {
         return null;
@@ -90,7 +90,7 @@ import java_cup.runtime.Symbol;
 ALPHA=[A-Za-z]
 DIGIT=[0-9]
 CHARACTERS = [^\0]
-WHITESPACE=[ \n\f\r\t\v]
+WHITESPACE=[ \n\f\r\t\x0B]
 
 
 A=[aA]
@@ -170,19 +170,27 @@ Z=[zZ]
 
 <YYINITIAL> \" { string_buf.setLength(0); yybegin(STRING); }
 <STRING> \\ { yybegin(STRING_BACKSLASH); }
+<STRING_BACKSLASH> \n {curr_lineno++; string_buf.append('\n'); yybegin(STRING); }
+<STRING_BACKSLASH> \0 { yybegin(STRING_ERROR); return new Symbol(TokenConstants.ERROR, "String contains escaped null character.");}
 <STRING_BACKSLASH> {CHARACTERS} {string_buf.append(yytext()); yybegin(STRING); } 
 
 <STRING> \" {
     yybegin(YYINITIAL);
+    if(maxLengthExceeded() != null) {
+        return maxLengthExceeded();
+    }
     return new Symbol(TokenConstants.STR_CONST, AbstractTable.stringtable.addString(string_buf.toString())); 
 }
 
+<STRING> \n { curr_lineno++; yybegin(YYINITIAL); return new Symbol(TokenConstants.ERROR, "Unterminated string constant"); }
+<STRING> \0 { yybegin(STRING_ERROR); return new Symbol(TokenConstants.ERROR, "String contains null character"); }
 <STRING> "\f" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\f'); }
 <STRING> "\n" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\n'); }
 <STRING> "\t" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\t'); }
 <STRING> "\b" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\b'); }
 <STRING> {CHARACTERS} { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append(yytext()); }
-<STRING> \n { yybegin(YYINITIAL); return new Symbol(TokenConstants.ERROR, "Unterminated string constant"); }
+<STRING_ERROR> \n { curr_lineno++; yybegin(YYINITIAL); }
+<STRING_ERROR> \" { yybegin(YYINITIAL); }
 
 
 <YYINITIAL> "--" { yybegin(SINGLE_COMMENT); }
@@ -199,7 +207,7 @@ Z=[zZ]
 
 <YYINITIAL, BLOCK_COMMENT> \n { curr_lineno++; }
 
-<SINGLE_COMMENT, BLOCK_COMMENT> . {}
+<SINGLE_COMMENT, BLOCK_COMMENT, STRING_ERROR> . {}
 
 {WHITESPACE} {}
 
