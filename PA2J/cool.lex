@@ -20,6 +20,9 @@ import java_cup.runtime.Symbol;
     StringBuffer string_buf = new StringBuffer();
 
     private int curr_lineno = 1;
+
+    private int comment_count = 0;
+
     int get_curr_lineno() {
 	   return curr_lineno;
     }
@@ -36,14 +39,12 @@ import java_cup.runtime.Symbol;
 
     Symbol maxLengthExceeded() {
       if (string_buf.length() >= MAX_STR_CONST) {
-        //TODO: remove the state; yybegin(STRING_ERROR);
+        yybegin(STRING_ERROR);
         return new Symbol(TokenConstants.ERROR, "String constant too long");
       } else {
         return null;
       }
     }
-
-    private int comment_count = 0;
 %}
 
 %init{
@@ -169,10 +170,6 @@ Z=[zZ]
 <YYINITIAL> [a-z][_a-zA-Z0-9]* { return new Symbol(TokenConstants.OBJECTID, AbstractTable.idtable.addString(yytext()));} 
 
 <YYINITIAL> \" { string_buf.setLength(0); yybegin(STRING); }
-<STRING> \\ { yybegin(STRING_BACKSLASH); }
-<STRING_BACKSLASH> \n {curr_lineno++; string_buf.append('\n'); yybegin(STRING); }
-<STRING_BACKSLASH> \0 { yybegin(STRING_ERROR); return new Symbol(TokenConstants.ERROR, "String contains escaped null character.");}
-<STRING_BACKSLASH> {CHARACTERS} {string_buf.append(yytext()); yybegin(STRING); } 
 
 <STRING> \" {
     yybegin(YYINITIAL);
@@ -184,11 +181,17 @@ Z=[zZ]
 
 <STRING> \n { curr_lineno++; yybegin(YYINITIAL); return new Symbol(TokenConstants.ERROR, "Unterminated string constant"); }
 <STRING> \0 { yybegin(STRING_ERROR); return new Symbol(TokenConstants.ERROR, "String contains null character"); }
-<STRING> "\f" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\f'); }
-<STRING> "\n" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\n'); }
-<STRING> "\t" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\t'); }
-<STRING> "\b" { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append('\b'); }
-<STRING> {CHARACTERS} { if(maxLengthExceeded() != null) { return maxLengthExceeded(); } string_buf.append(yytext()); }
+<STRING> "\f" { string_buf.append('\f'); }
+<STRING> "\n" { string_buf.append('\n'); }
+<STRING> "\t" { string_buf.append('\t'); }
+<STRING> "\b" { string_buf.append('\b'); }
+<STRING> \\ { yybegin(STRING_BACKSLASH); }
+
+<STRING_BACKSLASH> \n { yybegin(STRING); curr_lineno++; string_buf.append('\n'); }
+<STRING_BACKSLASH> \0 { yybegin(STRING_ERROR); return new Symbol(TokenConstants.ERROR, "String contains escaped null character.");}
+<STRING_BACKSLASH> {CHARACTERS} {string_buf.append(yytext()); yybegin(STRING); } 
+
+<STRING> {CHARACTERS} { string_buf.append(yytext()); }
 <STRING_ERROR> \n { curr_lineno++; yybegin(YYINITIAL); }
 <STRING_ERROR> \" { yybegin(YYINITIAL); }
 
@@ -211,11 +214,4 @@ Z=[zZ]
 
 {WHITESPACE} {}
 
-. { 
-    /* This rule should be the very last
-    in your lexical specification and
-    will match match everything not
-    matched by other lexical rules. */
-
-    return new Symbol(TokenConstants.ERROR, yytext());
-}
+. { return new Symbol(TokenConstants.ERROR, yytext()); }

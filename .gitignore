@@ -1,7 +1,12 @@
 semant
+mycoolc
+myparser
 parser
 lexer
 cgen
 *.class
-CoolLexer.java
+*.java
 */grading/
+*.pl
+*.aps
+Makefile
