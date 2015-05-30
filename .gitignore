@@ -4,6 +4,7 @@ myparser
 parser
 lexer
 cgen
+*.output
 *.class
 *.java
 */grading/
