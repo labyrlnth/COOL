@@ -69,19 +69,15 @@ nonterminal Classes class_list;
 nonterminal class_c class;
 nonterminal Features feature_list;
 nonterminal Feature feature;
-nonterminal Formals formal_list;
-nonterminal Formals non_empty_formal_list;
+nonterminal Formals formal_list, non_empty_formal_list;
 nonterminal formalc formal;
 nonterminal Expression expr;
-nonterminal comma_expr_list;
-nonterminal non_empty_comma_expr_list;
-nonterminal semi_expr_list;
-nonterminal at_type;
+nonterminal Expressions comma_expr_list, non_empty_comma_expr_list, semi_expr_list;
 nonterminal optinal_assign;
 nonterminal let_assign_list;
 nonterminal let_assign;
-nonterminal case_list;
-nonterminal case_stmt;
+nonterminal Cases cases;
+nonterminal branch case;
 
 /* Precedence declarations go here. */
 precedence left PLUS, MINUS;
@@ -151,13 +147,20 @@ formal
 expr
 	::= OBJECTID:oid ASSIGN expr:e
 		{: RESULT = new assign(curr_lineno(), oid, e); :}
-	| expr at_type DOT OBJECTID LPAREN comma_expr_list RPAREN
+	| expr:e AT TYPEID:tid DOT OBJECTID:oid LPAREN comma_expr_list:el RPAREN
+		{: RESULT = new static_dispatch(curr_lineno(), e, tid, oid, el); :}
+	| expr:e DOT OBJECTID:oid LPAREN comma_expr_list:el RPAREN
+		{: RESULT = new dispatch(curr_lineno(), e, oid, el); :}
 	| OBJECTID LPAREN comma_expr_list RPAREN
-	| IF expr THEN expr ELSE expr FI
-	| WHILE expr LOOP expr POOL
-	| LBRACE semi_expr_list RBRACE
+	| IF expr:e1 THEN expr:e2 ELSE expr:e3 FI
+		{: RESULT = new cond(curr_lineno(), e1, e2, e3); :}
+	| WHILE expr:e1 LOOP expr:e2 POOL
+		{: RESULT = new loop(curr_lineno(), e1, e2); :}
+	| LBRACE semi_expr_list:el RBRACE
+		{: RESULT = new block(curr_lineno(), el); :}
 	| LET let_assign_list IN expr
-	| CASE expr OF case_list ESAC
+	| CASE expr:e OF cases:cs ESAC
+		{: RESULT = new typcase(curr_lineno(), e, cs); :}
 	| NEW TYPEID:tid
 		{: RESULT = new new_(curr_lineno(), tid); :}
 	| ISVOID expr:e
@@ -170,11 +173,16 @@ expr
 		{: RESULT = new mul(curr_lineno(), e1, e2); :}
 	| expr:e1 DIV expr:e2
 		{: RESULT = new divide(curr_lineno(), e1, e2); :}
-	| NEG expr
-	| expr LT expr
-	| expr LE expr
-	| expr EQ expr
+	| NEG expr:e
+		{: RESULT = new neg(curr_lineno(), e); :}
+	| expr:e1 LT expr:e2
+		{: RESULT = new lt(curr_lineno(), e1, e2); :}
+	| expr:e1 LE expr:e2
+		{: RESULT = new leq(curr_lineno(), e1, e2); :}
+	| expr:e1 EQ expr:e2
+		{: RESULT = new eq(curr_lineno(), e1, e2); :}
 	| NOT expr:e
+		{: RESULT = new comp(curr_lineno(), e); :}
 	| LPAREN expr:e RPAREN
 		{: RESULT = e; :}
 	| OBJECTID:oid
@@ -187,25 +195,27 @@ expr
 		{: RESULT = new bool_const(curr_lineno(), b); :}
 	;
 
-at_type
-	::= /* empty */
-	| AT TYPEID
-	;
-
 comma_expr_list
 	::= /* empty */
-	| non_empty_comma_expr_list
+		{: RESULT = new Expressions(curr_lineno()); :}
+	| non_empty_comma_expr_list:el
+		{: RESULT = el; :}
 	;
 
 
 non_empty_comma_expr_list
-	::= expr
-	| expr COMMA non_empty_comma_expr_list
+	::= expr:e
+		{: RESULT = new Expressions(curr_lineno()).appendElement(e); :}
+	| non_empty_comma_expr_list:el expr:e COMMA
+		{: RESULT = el.appendElement(e); :}
 	;
 
 semi_expr_list
-	::= expr SEMI
-	| expr SEMI semi_expr_list
+	::= expr:e SEMI
+		{: RESULT = new Expressions(curr_lineno()).appendElement(e); :}
+	| semi_expr_list:el expr:e SEMI
+		{: RESULT = el.appendElement(e); :}
+
 	;
 
 optinal_assign
@@ -222,11 +232,14 @@ let_assign
 	::= OBJECTID COLON TYPEID optinal_assign
 	;
 
-case_list
-	::= case_stmt
-	| case_stmt case_list
+cases
+	::= case:c
+		{: RESULT = new Cases(curr_lineno()).appendElement(c); :}
+	| cases:cs case:c
+		{: RESULT = cs.appendElement(c); :}
 	;
 
-case_stmt
-	::= OBJECTID COLON TYPEID DARROW expr SEMI
+case
+	::= OBJECTID:oid COLON TYPEID:tid DARROW expr:e SEMI
+		{: RESULT = new branch(curr_lineno(), oid, tid, e); :}
 	;
