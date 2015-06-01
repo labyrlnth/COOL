@@ -71,17 +71,17 @@ nonterminal Features feature_list;
 nonterminal Feature feature;
 nonterminal Formals formal_list, non_empty_formal_list;
 nonterminal formalc formal;
-nonterminal Expression expr;
 nonterminal Expressions comma_expr_list, non_empty_comma_expr_list, semi_expr_list;
-nonterminal optinal_assign;
-nonterminal let_assign_list;
-nonterminal let_assign;
+nonterminal Expression expr, let_expr_end;
 nonterminal Cases cases;
 nonterminal branch case;
 
 /* Precedence declarations go here. */
 precedence left PLUS, MINUS;
 precedence left MULT, DIV;
+precedence nonassoc ISVOID, NEG, EQ, LE;
+precedence left DOT;
+
 
 program	
 	::= class_list:cl
@@ -105,6 +105,13 @@ class
 				   fl, curr_filename()); :}
 	| CLASS TYPEID:n INHERITS TYPEID:p LBRACE feature_list:fl RBRACE SEMI
 	    {: RESULT = new class_c(curr_lineno(), n, p, fl, curr_filename()); :}
+	| error SEMI
+		{: RESULT = new class_c(curr_lineno(),
+			AbstractTable.idtable.addString("bbject"),
+			AbstractTable.idtable.addString("Object"), 
+			new Features(curr_lineno()),
+			curr_filename());
+		:}
 	;
 
 /* Feature list may be empty, but no empty features in list. */
@@ -112,16 +119,24 @@ feature_list
 	::= /* empty */
 	    {: RESULT = new Features(curr_lineno()); :}
 	| feature_list:fl feature:f
-		{: RESULT = fl.appendElement(f); :}
+		{: RESULT = fl.appendElement(f); :} 
 	;
 
-feature 
+feature
 	::= OBJECTID:oid LPAREN formal_list:fl RPAREN COLON TYPEID:tid LBRACE expr:e RBRACE SEMI
 		{: RESULT = new method(curr_lineno(), oid, fl, tid, e); :}
+	| error LBRACE expr:e RBRACE SEMI
+    	{: RESULT = new method(curr_lineno(),
+    		AbstractTable.idtable.addString("object"),
+    		new Formals(curr_lineno()),
+    		AbstractTable.idtable.addString("Object"),
+    		e); :}
 	| OBJECTID:oid COLON TYPEID:tid SEMI
 		{: RESULT = new attr(curr_lineno(), oid, tid, new no_expr(curr_lineno())); :}
 	| OBJECTID:oid COLON TYPEID:tid ASSIGN expr:e SEMI
 		{: RESULT = new attr(curr_lineno(), oid, tid, e); :}
+	| OBJECTID:oid COLON error SEMI
+		{: RESULT = new attr(curr_lineno(), oid, AbstractTable.idtable.addString("Object"), new no_expr(curr_lineno())); :}
 	;
 
 formal_list
@@ -151,14 +166,18 @@ expr
 		{: RESULT = new static_dispatch(curr_lineno(), e, tid, oid, el); :}
 	| expr:e DOT OBJECTID:oid LPAREN comma_expr_list:el RPAREN
 		{: RESULT = new dispatch(curr_lineno(), e, oid, el); :}
-	| OBJECTID LPAREN comma_expr_list RPAREN
+	| OBJECTID:oid LPAREN comma_expr_list:el RPAREN
+		{: RESULT = new dispatch(curr_lineno(), new object(curr_lineno(), AbstractTable.idtable.addString("self")), oid, el); :}
 	| IF expr:e1 THEN expr:e2 ELSE expr:e3 FI
 		{: RESULT = new cond(curr_lineno(), e1, e2, e3); :}
 	| WHILE expr:e1 LOOP expr:e2 POOL
 		{: RESULT = new loop(curr_lineno(), e1, e2); :}
 	| LBRACE semi_expr_list:el RBRACE
 		{: RESULT = new block(curr_lineno(), el); :}
-	| LET let_assign_list IN expr
+	| LET OBJECTID:oid COLON TYPEID:tid ASSIGN expr:e1 let_expr_end:e2
+        {: RESULT = new let(curr_lineno(), oid, tid, e1, e2); :}  
+    | LET OBJECTID:oid COLON TYPEID:tid let_expr_end:e2
+        {: RESULT = new let(curr_lineno(), oid, tid, new no_expr(curr_lineno()), e2); :}  
 	| CASE expr:e OF cases:cs ESAC
 		{: RESULT = new typcase(curr_lineno(), e, cs); :}
 	| NEW TYPEID:tid
@@ -206,7 +225,7 @@ comma_expr_list
 non_empty_comma_expr_list
 	::= expr:e
 		{: RESULT = new Expressions(curr_lineno()).appendElement(e); :}
-	| non_empty_comma_expr_list:el expr:e COMMA
+	| non_empty_comma_expr_list:el COMMA expr:e
 		{: RESULT = el.appendElement(e); :}
 	;
 
@@ -215,22 +234,24 @@ semi_expr_list
 		{: RESULT = new Expressions(curr_lineno()).appendElement(e); :}
 	| semi_expr_list:el expr:e SEMI
 		{: RESULT = el.appendElement(e); :}
-
+	| semi_expr_list:el expr:e SEMI
+		{: RESULT = el; :}
+	| error SEMI
+		{: RESULT = new Expressions(curr_lineno()); :}
+	| error
+		{: RESULT = new Expressions(curr_lineno()); :}
 	;
 
-optinal_assign
-	::= /* empty */
-	| ASSIGN expr
-	;
-
-let_assign_list
-	::= let_assign
-	| let_assign COMMA let_assign_list
-	;
-
-let_assign
-	::= OBJECTID COLON TYPEID optinal_assign
-	;
+let_expr_end
+        ::= COMMA OBJECTID:oid COLON TYPEID:tid ASSIGN expr:e1 let_expr_end:e2
+            {: RESULT = new let(curr_lineno(), oid, tid, e1, e2); :}
+        | COMMA OBJECTID:oid COLON TYPEID:tid let_expr_end:e2
+            {: RESULT = new let(curr_lineno(), oid, tid, new no_expr(curr_lineno()), e2); :}
+        | IN expr:e
+            {: RESULT = e; :}
+        | error let_expr_end:e
+            {: RESULT = e; :}
+        ;
 
 cases
 	::= case:c
